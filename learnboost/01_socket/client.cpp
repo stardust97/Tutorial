@@ -36,7 +36,7 @@ void sync_connect() {
   // response.resize(1024); // info 用string做buffer必须先开辟缓冲区
   char response[1024];
   std::size_t recv_len = socket_.read_some(boost::asio::buffer(response), ec);
-  // response[recv_len] = '\n';
+  response[recv_len] = '\n';
   std::cout << "recv msg: "<< response << std::endl;
   (void)socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_receive, ec);
 
