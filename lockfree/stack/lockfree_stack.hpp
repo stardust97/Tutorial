@@ -29,31 +29,34 @@ void push(T const &data) {
 }
 
 std::shared_ptr<T> pop() {
-  while(true){
 
-      RefNode old_head = head_.load();
+  while (true) {
+    RefNode old_head = head_.load();
+    old_head.external_count++;
+    RefNode new_head;
+    do {
+      new_head = old_head;
+      new_head.external_count++;
+    } while (head_.compare_exchange_weak(old_head, new_head));
 
-      do {
-
-      }while()
-
-
+    if (head_.compare_exchange_weak(new_head, new_head->next)) {
+      // return value
+    } else {
+      //delete or retry
+    }
   }
-
-
-
-
 
 
 }
 
 private:
+  struct RefNode;
   struct Node {
     //todo 这里的data需要支持拷贝构造
     Node(T const &data): next(nullptr), data(std::make_shared(data)), internal_count(0){
 
     }
-    Node *next;
+    RefNode next; // 这里为什么用值而非指针？
     std::shared_ptr<T> data;
     std::atomic<int> internal_count;
   };
