@@ -8,69 +8,69 @@
 template <typename T> 
 class LockFreeStack {
 public:
-
-LockFreeStack(): head_(nullptr) {
-
+LockFreeStack() {
+  RefNode dummy;
+  dummy.node = nullptr;
+  dummy.external_count = 0;
+  head_.store(dummy);
 }
 
 ~LockFreeStack() {
-  Node* h = head_.node;
-  while (h) {
-    Node *n = h->next;
-    delete h;
-    h = n;
-  }
+  while (pop());
 }
 
 void push(T const &data) {
-  RefNode new_node = new Node(data);
-  new_node.node->next=head_.node;
-  while (!head_.compare_exchange_weak(new_node->next, new_node));
+  RefNode new_node ;
+  new_node.node = new Node(data);
+  // new_node.external_count = 1;
+  new_node.node->next=head_.load();
+  while (!head_.compare_exchange_weak(new_node.node->next, new_node));
 }
 
 std::shared_ptr<T> pop() {
-
   while (true) {
     RefNode old_head = head_.load();
-    old_head.external_count++;
     RefNode new_head;
     do {
       new_head = old_head;
       new_head.external_count++;
-    } while (head_.compare_exchange_weak(old_head, new_head));
+    } while (!head_.compare_exchange_weak(old_head, new_head));
+    // 在多线程的情况下，此时head_的引用计数是cas成功的那个线程的引用计数
 
-    if (head_.compare_exchange_weak(new_head, new_head->next)) {
-      // return value
+    Node *node = old_head.node;
+    if (!node->data) {
+      return nullptr;
+    }
+    if (head_.compare_exchange_strong(old_head, node->next)) { // pop头结点
+      int increase_cnt = old_head.external_count - 2;
+      if (node->internal_count.fetch_add(increase_cnt) == -increase_cnt) {
+        std::shared_ptr<T> res;
+        res.swap(node->data);
+        delete node;
+        return res;
+      }
     } else {
-      //delete or retry
+      if (node->internal_count.fetch_sub(1) == 1) {
+        delete node;
+      }
     }
   }
-
-
 }
 
 private:
-  struct RefNode;
-  struct Node {
-    //todo 这里的data需要支持拷贝构造
-    Node(T const &data): next(nullptr), data(std::make_shared(data)), internal_count(0){
-
-    }
-    RefNode next; // 这里为什么用值而非指针？
-    std::shared_ptr<T> data;
-    std::atomic<int> internal_count;
-  };
-
+  struct Node;
   struct RefNode {
-    RefNode() : node(nullptr), external_count(1) {}
-    RefNode(T const &data) : node(new Node(data)), external_count(1) {}
-
-   ~ RefNode(){
-    //不管理node的生命周期
-   }
-
     Node *node;
     int external_count;
+  };
+
+  struct Node {
+    //todo 这里的data需要支持拷贝构造
+    Node(T const &data) : data(std::make_shared<T>(data)), internal_count(0) {}
+
+    std::shared_ptr<T> data;
+    std::atomic<int> internal_count;
+    RefNode next; // 这里为什么用值而非指针？
   };
 
 private:
