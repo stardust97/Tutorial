@@ -22,7 +22,7 @@ LockFreeStack() {
 void push(T const &data) {
   RefNode new_node ;
   new_node.node = new Node(data);
-  // new_node.external_count = 1;
+  new_node.external_count = 1;
   new_node.node->next=head_.load();
   while (!head_.compare_exchange_weak(new_node.node->next, new_node));
 }
@@ -37,18 +37,19 @@ std::shared_ptr<T> pop() {
     } while (!head_.compare_exchange_weak(old_head, new_head));
     // 在多线程的情况下，此时head_的引用计数是cas成功的那个线程的引用计数
 
+    old_head = new_head;
     Node *node = old_head.node;
-    if (!node->data) {
+    if (!node) {
       return nullptr;
     }
     if (head_.compare_exchange_strong(old_head, node->next)) { // pop头结点
+      std::shared_ptr<T> res;
+      res.swap(node->data);
       int increase_cnt = old_head.external_count - 2;
       if (node->internal_count.fetch_add(increase_cnt) == -increase_cnt) {
-        std::shared_ptr<T> res;
-        res.swap(node->data);
         delete node;
-        return res;
       }
+      return res;
     } else {
       if (node->internal_count.fetch_sub(1) == 1) {
         delete node;

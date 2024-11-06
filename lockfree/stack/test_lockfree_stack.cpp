@@ -1,6 +1,7 @@
 
 #include "lockfree_stack.hpp"
 
+#include <pthread.h>
 #include <set>
 #include <mutex>
 #include <thread>
@@ -112,9 +113,9 @@ void TestSingleRefStack() {
 
     std::set<int>  rmv_set;
     std::mutex set_mtx;
-
+    int test_num = 20000;
     std::thread t1([&]() {
-        for (int i = 0; i < 20000; i++) {
+        for (int i = 0; i < test_num; i++) {
             single_ref_stack.push(i);
             std::cout << "push data " << i << " success!" << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -122,7 +123,7 @@ void TestSingleRefStack() {
         });
 
     std::thread t2([&]() {
-        for (int i = 0; i < 10000;) {
+        for (int i = 0; i < test_num/2;) {
             auto head = single_ref_stack.pop();
             if (!head) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -136,7 +137,7 @@ void TestSingleRefStack() {
         });
 
     std::thread t3([&]() {
-        for (int i = 0; i < 10000;) {
+        for (int i = 0; i < test_num/2;) {
             auto head = single_ref_stack.pop();
             if (!head) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -148,12 +149,15 @@ void TestSingleRefStack() {
             i++;
         }
         });
+    pthread_setname_np(t1.native_handle(), "push1");
+    pthread_setname_np(t2.native_handle(), "pop1");
+    pthread_setname_np(t3.native_handle(), "pop2");
 
     t1.join();
     t2.join();
     t3.join();
 
-    assert(rmv_set.size() == 20000);
+    assert(rmv_set.size() == test_num);
     std::cout << "test succeed!" << std::endl;
 }
 
